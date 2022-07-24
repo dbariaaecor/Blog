@@ -16,16 +16,18 @@ class okayNotification extends Notification
     use Queueable;
     public $user;
     public $title;
+    public $slug;
 
     /**
      * Create a new notification instance.
      *
      * @return void
      */
-    public function __construct($title,$user)
+    public function __construct($title,$user,$slug)
     {
         $this->user = $user;
         $this->title = $title;
+        $this->slug = $slug;
     }
 
     /**
@@ -47,12 +49,10 @@ class okayNotification extends Notification
      */
     public function toMail($notifiable)
     {
-
         // $message = new MailMessage;
         // // $message = $message->from($this->event->useremail);
         // $message = $message->markdown('emailpages.approvedPost');
         // return $message;
-
     }
 
 
@@ -65,9 +65,9 @@ class okayNotification extends Notification
      */
     public function toDatabase($notifiable)
     {
-
         return [
             'title'=>$this->title,
+            'slug'=>$this->slug,
             'user'=>Auth::user()->username,
         ];
     }

@@ -1,76 +1,69 @@
 <?php
-
-use App\Models\post;
+#region namespaces
+use App\Models\Post;
 use App\Models\User;
-use Illuminate\Http\Request;
+use App\Mail\RejectMail;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
-
-use App\Http\Controllers\blogController;
-use App\Http\Controllers\userController;
-use App\Models\tempPost;
-
-/*
-|--------------------------------------------------------------------------
-| Web Routes
-|--------------------------------------------------------------------------
-|
-| Here is where you can register web routes for your application. These
-| routes are loaded by the RouteServiceProvider within a group which
-| contains the "web" middleware group. Now create something great!
-|
-*/
-
-Route::get('/', function () {
-    return view('welcome');
-});
-
+use App\Http\Controllers\TagController;
+use App\Http\Controllers\BlogController;
+use App\Http\Controllers\UserController;
+#endregion namespaces
+Route::get('/', [BlogController::class,'welcomepage'])->name('welcomepage');
+Route::get('/tags',[TagController::class,'getTags'])->name('tags');
+Route::get('/getposts/{slug}',[TagController::class,'getPosts'])->name('getposts');
+Route::get('/edittags/{slug}',[TagController::class,'geteditTags'])->name('geteditTags');
+Route::get('/download/{id}',[UserController::class,'download'])->name('download');
+Route::get('/showblogs/{user}/posts/{slug?}',[BlogController::class,'userblogs'])->name('userblogs');
 Auth::routes();
-
 Route::group(['middleware' => 'auth'], function () {
-
-
     //Blog
-
-    Route::get('/home', [blogController::class,'index'])->name('home');
-    Route::get('/showblog',[blogController::class,'index'])->name('showallblog');
-    Route::get('/createblog',[blogController::class,'create'])->name('createblog');
-    Route::post('/store',[blogController::class,'store'])->name('store');
-    Route::get('/edit/{slug}',[blogController::class,'edit'])->name('edit');
-    Route::post('/update/{slug}',[blogController::class,'update'])->name('update');
-    Route::get('/delete/{slug}',[blogController::class,'delete'])->name('delete');
-    Route::get('/showblogs/{user}/posts/{slug?}',[blogController::class,'userblogs'])->name('userblogs');
-
-    //User (admin)
-
-    Route::get('/profile',[userController::class,'index'])->name('profile');
-    Route::get('/profile/{slug}',[userController::class,'userindex'])->name('userindex');
-    Route::get('profiledit/{slug}',[userController::class,'edit'])->name('profileedit');
-    Route::post('profileupdate/{slug}',[userController::class,'update'])->name('profileupdate');
-
-    //User (superadmin)
-
-    Route::get('/approve/{slug}/{id}',[userController::class,'approve'])->name('approve');
-    Route::get('/approveindex',[userController::class,'approveindex'])->name('approveindex');
-    Route::post('/cancel/{slug}/{id}',[userController::class,'cancelApproval'])->name('cancelApproval');
-    Route::get('/ap',function(){
-        if(User::find(Auth::user()->id)->hasRole('admin')){
-            return view('adminapprove');
-        }
-        abort(403);
+    Route::group(['as'=>'blog.'],function(){
+        Route::get('/home', [BlogController::class,'index'])->name('home');
+        Route::get('/showblog',[BlogController::class,'index'])->name('showallblog');
+        Route::get('/draftshowblog',[BlogController::class,'draftindex'])->name('draftshowallblog');
+        Route::get('/createblog',[BlogController::class,'create'])->name('createblog');
+        Route::post('/store',[BlogController::class,'store'])->name('store');
+        Route::get('/edit/{slug}',[BlogController::class,'edit'])->name('edit');
+        Route::post('/update/{slug}',[BlogController::class,'update'])->name('update');
+        Route::get('/delete/{slug}',[BlogController::class,'delete'])->name('delete');
+        Route::get('/delete/{slug}/{id}',[BlogController::class,'deleteone'])->name('deleteone');
+        Route::get('/publish/{slug}',[BlogController::class,'updateStatus'])->name('updateStatus');
+        Route::get('/publishnow/{slug}',[BlogController::class,'updateStatusforpublishnow'])->name('publishnow');
+        Route::get('/showbloag/post/{slug}',[BlogController::class,'viewblog'])->name('viewblog');
+    });
+    //User
+    Route::group(['as'=>'user.'],function(){
+        //USer Profile
+        Route::get('/profile',[UserController::class,'index'])->name('profile');
+        Route::get('/profile/{slug}',[UserController::class,'userindex'])->name('userindex');
+        Route::get('profiledit/{slug}',[UserController::class,'edit'])->name('profileedit');
+        Route::get('professionalprofiledit/{slug}',[UserController::class,'professionalprofiledit'])->name('professionalprofiledit');
+        Route::post('profileupdate/{slug}',[UserController::class,'update'])->name('profileupdate');
+        Route::post('professionalprofilupdate/{slug}',[UserController::class,'professionalprofileupdate'])->name('professionalprofileupdate');
+    });
+    //User Notification
+    Route::group(['as'=>'notification.'],function(){
+        //Notifications
+        Route::get('/approve/{slug}/{id}',[UserController::class,'approve'])->name('approve');
+        Route::get('/approveindex',[UserController::class,'approveindex'])->name('approveindex');
+        Route::post('/cancel/{slug}/{id}',[UserController::class,'cancelApproval'])->name('cancelApproval');
+        Route::get('/ap',function(){
+            if(User::find(Auth::user()->id)->hasRole('admin')){
+                return view('notification.adminapprove');
+            }
+            abort(403);
+        });
     });
 });
-
-
-
 Route::fallback(function(){
-    return view('errorPages.pagenotfound');
+    return view('error_pages.html.pagenotfound');
 });
 
-
-
-
 //tests
+
+
     /*
         Route::get('/post/{id}',function($id){
             $post = post::find($id);
@@ -130,6 +123,16 @@ Route::fallback(function(){
         Route::post('/updatePost/{slug}',[PostController::class,'update'])->name('updatepost');
         Route::get('/deletePost/{slug}',[PostController::class,'deletepost'])->name('deletepost');
 
-    */
+        Route::get('/role',function(){
+            dd(Auth::user()->roles[0]['name']=='superadmin');
+        });
+        */
 
-
+        Route::get('/send',function(){
+            $post = Post::find(30);
+            $from = 'superadmin@gmail.com';
+            $superadmin = 'superadmin';
+            $data = array('comment'=>"write more",'userpost'=>$post,'from'=>$from,'superadmin'=>$superadmin);
+            Mail::to($post->user->email)->send(new RejectMail($data));
+        });
+   Route::get('temppost/{slug}',[UserController::class,'deleteTempPost']);

@@ -11,7 +11,7 @@ class RejectMail extends Mailable implements ShouldQueue
 {
     use Queueable, SerializesModels;
 
-    public $data = array();
+    public $data = array("");
     /**
      * Create a new message instance.
      *
@@ -21,7 +21,6 @@ class RejectMail extends Mailable implements ShouldQueue
 
     {
         $this->data = $data;
-
     }
 
     /**
@@ -31,7 +30,6 @@ class RejectMail extends Mailable implements ShouldQueue
      */
     public function build()
     {
-
-        return $this->from($this->data['from'])->view('emailpages.RejectedBlog')->with('data',$this->data);
+        return $this->from($this->data['from'])->view('email_pages.html.RejectedBlog')->with('data',$this->data);
     }
 }

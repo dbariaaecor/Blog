@@ -43,7 +43,7 @@ class sendPublishNotification extends Notification implements ShouldQueue
     {
         $message = new MailMessage;
         $message = $message->from($this->event->email);
-        $message = $message->view('emailpages.sendpublish',['post'=>$this->event->post]);
+        $message = $message->view('email_pages.html.sendpublish',['post'=>$this->event->post]);
         return $message;
         dd('in mail');
     }

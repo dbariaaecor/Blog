@@ -15,10 +15,13 @@ return new class extends Migration
     {
         Schema::create('temp_posts', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->foreignId('post_id')->constrained()->onDelete('cascade');
             $table->string('title');
             $table->string('slug');
-            $table->string('text_content');
+            $table->json('tags');
+            $table->text('preview_content');
+            $table->text('text_content');
             $table->integer('post_Status');
             $table->boolean('isApprove')->default(false);
             $table->timestamps();
@@ -35,3 +38,5 @@ return new class extends Migration
         Schema::dropIfExists('temp_posts');
     }
 };
+
+

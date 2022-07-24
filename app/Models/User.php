@@ -4,15 +4,18 @@ namespace App\Models;
 
 use Spatie\Sluggable\HasSlug;
 use Laravel\Sanctum\HasApiTokens;
+use Spatie\MediaLibrary\HasMedia;
 use Spatie\Sluggable\SlugOptions;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Notifications\Notifiable;
+use Spatie\MediaLibrary\InteractsWithMedia;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
-class User extends Authenticatable
+class User extends Authenticatable implements HasMedia
 {
-    use HasApiTokens, HasFactory, Notifiable,HasRoles,HasSlug;
+    use InteractsWithMedia,HasApiTokens, HasFactory, Notifiable,HasRoles,HasSlug;
 
     /**
      * Get the options for generating the slug.
@@ -24,6 +27,14 @@ class User extends Authenticatable
             ->saveSlugsTo('username');
     }
 
+
+    public function post(){
+        return $this->hasMany(Post::class);
+    }
+
+    public function temppost(){
+        return $this->hasMany(Temppost::class);
+    }
     /**
      * The attributes that are mass assignable.
      *

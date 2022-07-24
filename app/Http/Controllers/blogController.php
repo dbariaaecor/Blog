@@ -2,210 +2,237 @@
 
 namespace App\Http\Controllers;
 
-use App\Events\sendPublishEvent;
-use App\Models\post;
-use App\Models\User;
-use Illuminate\Http\Request;
-use Laravel\Ui\Presets\React;
-use Illuminate\Support\Facades\Auth;
-use App\Http\Requests\BlogValidationRequest;
-use App\Http\Requests\EditBlogValidationRequest;
-use App\Models\tag;
-use App\Models\tempPost;
+#region namespaces
+    use App\Models\Tag;
+    use App\Models\Post;
+    use App\Models\User;
+    use App\Models\Temppost;
+    use App\Http\Classes\Blog;
+    use Illuminate\Http\Request;
+    use App\Events\sendPublishEvent;
+use App\Http\Classes\Tags;
+use App\Http\Classes\User as ClassesUser;
+    use App\Http\interfaces\constant;
+    use Illuminate\Support\Facades\Auth;
+    use App\Http\Requests\blog\StoreValidation;
+    use App\Http\Requests\blog\EditBlogValidation;
+    use Spatie\MediaLibrary\MediaCollections\Models\Media;
+#endregion namespaces
 
-class blogController extends Controller
-{
-
+class BlogController extends Controller implements constant{
+    public $blog;
+    public $classuser;
+    public $classtag;
+    public function __construct(Blog $blog,ClassesUser $classuser,Tags $classtag){
+        $this->blog = $blog;
+        $this->classuser = $classuser;
+        $this->classtag = $classtag;
+    }
+    //welcome page
+    public function welcomepage(){
+        $posts = $this->blog->Fetch();
+        $topfiveposts = $this->blog->topfive();
+        return view('welcome',['posts'=>$posts,'topfiveposts'=>$topfiveposts]);
+    }
+    //user index page
     public function index(){
-
-        $post = post::where(['user_id'=>Auth::user()->id])->get();
-        return view('blog.showblog',['posts'=>$post]);
+        $posts = $this->blog->userPosts(Auth::user()->id);
+        return view('blog.show',['posts'=>$posts]);
     }
+    public function draftindex(){
+        $posts = $this->blog->userDraftPosts(Auth()->user()->id);
+        return view('blog.draftindex',['posts'=>$posts]);
+    }
+    //create blog page
     public function create(){
-        return view('blog.createBlog');
+        return view('blog.create');
     }
-
-    public function store(BlogValidationRequest $request){
-        $post = new post();
-        $posttag = new tag();
-
+    public function resentBlogs($userslug){
+        return $this->blog->userResentBlogs($userslug);
+    }
+    //store blog
+    public function store(StoreValidation $request){
         $post_status = 0;
         if($request->has('draft')){
             $post_status = 0;
         }
         if($request->has('publish')){
             $post_status = 1;
-        }
-        $post->title = $request->title;
-        $post->user_id = Auth::user()->id;
-        if($request->hasFile('cover_img')){
-            $post->addMedia($request->file('cover_img'))->toMediaCollection('cover_image','my_files');
-        }
-        $tags = explode(',',$request->tags);
-        $ids = array("");
-        $tempost = post::find(3);
-        foreach($tags as $tag){
-           $id =  $posttag::insertGetId(['name'=>$tag]);
-           array_push($ids,$id);
-        }
-        array_shift($ids);
-        $tempost->tags()->attach($ids);
-        exit;
-        $post->text_content = $request->postcontent;
-        $post->post_Status = $post_status;
-        if($request->hasFile('post_img')){
-            foreach($request->file('post_img') as $file){
-                $post->addMedia($file)->toMediaCollection();
-           }
-        }
-        $post->isApprove = false;
-        $email = Auth::user()->email;
+            if(Auth::user()->roles[0]['name']=='superadmin'){
 
-        $post->save();
-        if($post_status == 1){
-            event(new sendPublishEvent($post,$email));
+                $post_status = constant::PUBLISHED;
+            }
         }
-        return redirect(route('showallblog'))->with('message','New Post Added');
+
+        $this->blog->store($request,$post_status);
+        if($post_status==0){
+            return redirect(route('blog.draftshowallblog'))->with('message','New Post Added');
+        }
+        return redirect(route('blog.showallblog'))->with('message','New Post Added');
     }
+    //update blog status for schedule
+    public function updateStatus(Request $request,$slug){
+        $post = $this->blog->findPost($slug);
+        if(Auth::user()->roles[0]['name']=='superadmin'){
+            $this->blog->updatepostforsuperadmins($post,$request->datetime);
+        }else{
+            $post = $this->blog->findPost($slug);
+            $temppost = $this->blog->Temppost_For_Publish_And_Schedule($post,$request->datetime);
+            $email = Auth::user()->email;
+            $post->post_Status = constant::APPROVAL_PENDING;
+            $post->actual_post_time = $request->datetime;
+            $post->save();
+            $message = "Your blog is again in approval State";
+            event(new sendPublishEvent($temppost,$email));
+        }
 
+        return redirect(route('blog.showallblog'))->with('message',$message);
+    }
+    //update blog status for publish now
+    public function updateStatusforpublishnow($slug){
+        $post = $this->blog->findPost($slug);
+        if(Auth::user()->roles[0]['name']=='superadmin'){
+            $this->blog->updatepostforsuperadmins($post);
+        }else{
+            $temppost = $this->blog->Temppost_For_Publish_And_Schedule($post);
+            $email = Auth::user()->email;
+            $post->post_Status = constant::PENDING;
+            $post->save();
+            $message = "Your Draft blog is  in approval State";
+            event(new sendPublishEvent($temppost,$email));
+        }
+
+        return redirect(route('blog.showallblog'))->with('message',$message);
+    }
+    //edit blog
     public function edit(Request $request,$slug){
-        $post = post::where(['slug'=>$slug,'user_id'=>Auth::user()->id])->first();
+        $edpost = $this->blog->edit($slug);
+        if($edpost==null){
+            return view('error_pages.html.pagenotfound');
+        }
+        return view('blog.edit',['post'=>$edpost]);
+    }
+    //update blog
+    public function update(EditBlogValidation $request,$slug){
+        $post = $this->blog->findPost($slug);
         if($post==null){
-            return view('errorPages.pagenotfound');
-        }
-        return view('blog.editblog',['post'=>$post]);
-    }
-
-    public function update(EditBlogValidationRequest $request,$slug){
-        $post = post::where('slug',$slug)->first();
-        //Initialize statuscode
-        $status_code = 1;
-        if($post::where('slug',$slug)->first()->post_Status==0){
-            $status_code = 0;
-        }
-        if($post::where('slug',$slug)->first()->post_Status==3){
-            $status_code = 1;
-        }
-        //Create temp post if post is updating
-        if(post::where('slug',$slug)->first()->post_Status==2){
-            $temppost = new tempPost;
-            $temppost->user_id = $post->user_id;
-            $temppost->title = $post->title;
-            $temppost->slug = $post->slug;
-            $temppost->text_content = $post->text_content;
-            $temppost->post_Status = $post->post_Status;
-            $temppost->isApprove = $post->isApprove;
-            $temppost->save();
-
-            //move old model images to new model
-            $temppost = tempPost::where('slug',$post->slug)->first();
-
-            $covermediaobject = $post->getMedia('cover_image');
-            $postmediaobject = $post->getMedia();
-            foreach($covermediaobject as $covermedia){
-                $covermedia->copy($temppost,'temp_cover_image','temp_my_files');
-            }
-            foreach($postmediaobject as $postimgmedia){
-                $postimgmedia->copy($temppost,'temp_post_images','temp_my_post_files');
-            }
-            $status_code = 4;
-        }
-        //assign new updated values to post model
-        $post->isApprove = false;
-        $email = Auth::user()->email;
-        $post->title = $request->title;
-        $post->post_Status = $status_code;
-
-        $post->text_content = $request->postcontent;
-
-        //assign updated images to model and delete old images from post model
-
-        if($request->hasFile('cover_img')){
-            foreach($post->getMedia('cover_image') as $cover_image){
-                $cover_image->delete();
-            }
-            $post->addMedia($request->file('cover_img'))->toMediaCollection('cover_image','my_files');
-        }
-        if($request->hasFile('post_img')){
-            foreach($post->getMedia() as $postimg){
-                $postimg->delete();
-            }
-            foreach($request->file('post_img') as $file){
-                $post->addMedia($file)->toMediaCollection();
-           }
-        }
-        //save updated post
-
-        $post->save();
-
-
-        //notificatons and session messages
-
-            if(post::where('slug',$slug)->first()->post_Status==4 || post::where('slug',$slug)->first()->post_Status==3 || post::where('slug',$slug)->first()->post_Status==1){
-                //post is updating after publised
-                    $message = "Your blog is again in approval State";
-                    event(new sendPublishEvent($post,$email));
-            }else{
-                $message = "Your drafted blog is Updated Sucessfully";
-            }
-
-        return redirect(route('showallblog'))->with('message',$message);
-    }
-
-    public function delete($slug){
-        $post = post::where(['slug'=>$slug,'user_id'=>Auth::user()->id])->first();
-        if($post==null){
-            return view('errorPages.pagenotfound');
-        }
-        foreach($post->getMedia() as $postimg){
-            $postimg->delete();
-        }
-        foreach($post->getMedia('cover_image') as $cover_image){
-            $cover_image->delete();
-        }
-        $post->delete();
-        return redirect(route('showallblog'))->with('delete',"Post Deleted Successfully");
-    }
-
-    public function userblogs($userslug,$postslug=null){
-
-        $user = User::where(['username'=>$userslug])->first();
-
-                if($postslug==null){
-                    if(Auth::user()->username==$userslug){
-                     return redirect('/home');
-                    }
-                    if($user==null){
-                        return view('errorPages.pagenotfound');
-                    }
-
-                    $posts = post::where(['user_id'=>$user->id,'post_Status'=>2])->get();
-                    $oldposts = tempPost::where(['user_id'=>$user->id,'post_status'=>2])->get();
-                    if($posts==null){
-                        return view('errorPages.pagenotfound');
+            return view('error_pages.html.pagenotfound');
+        }else{
+            $temppost = $this->blog->findTempPost($post->id);
+            if($temppost==null){
+                if($request->has('saveasdraft')){
+                    $this->blog->updateoriginalpost($request,$post);
+                    return redirect(route('blog.draftshowallblog'))->with('message','Your drafted blog is updated.');
+                }
+                if($request->has('publish')){
+                    if(Auth::user()->roles[0]['name']=='superadmin'){
+                         $this->blog->updateoriginalpost($request,$post,false,true);
                     }else{
-                        return view('blog.userblogs',['posts'=>$posts,'userslug'=>$userslug,'oldposts'=>$oldposts]);
+                        $this->blog->publisdrafthpost($request,$post);
                     }
-
-                }else{
-
-                    if($user==null){
-                        return view('errorPages.pagenotfound');
+                    return redirect(route('blog.showallblog'))->with('message','Your blog is  in approval State');
+                }
+                if($request->has('schedule')){
+                    if(Auth::user()->roles[0]['name']=='superadmin'){
+                        $this->blog->updateoriginalpost($request,$post,true,true);
+                    }else{
+                        $this->blog->scheduledraftpost($request,$post);
+                        $post->actual_post_time = $request->scheduletime;
+                        $post->post_Status = constant::APPROVAL_PENDING;
+                        $post->save();
                     }
-                    $post = post::where(['slug'=>$postslug,'post_Status'=>2])->first();
-                    $oldpost = tempPost::where(['user_id'=>$user->id,'post_status'=>2,'slug'=>$postslug])->first();
-                    if($post==null){
-                        if($oldpost==null){
-                            return view('errorPages.pagenotfound');
-                        }
-                        return view('blog.userblog',['post'=>$post,'userslug'=>$userslug,'oldpost'=>$oldpost]);
+                    $message = "Your blog is  in approval State";
+                    return redirect(route('blog.showallblog'))->with('message',$message);
+                }
+                if($request->has('update')){
+                    if(Auth::user()->roles[0]['name']=='superadmin'){
+                        $this->blog->updateoriginalpost($request,$post,false,true);
+                    }else{
+                        $this->blog->updatePublishedPost($request,$post);
                     }
-                    else{
-                        return view('blog.userblog',['post'=>$post,'userslug'=>$userslug,'oldpost'=>$oldpost]);
-                    }
-               }
+                    $message = "Your blog is  in approval State";
 
+                    return redirect(route('blog.showallblog'))->with('message',$message);
+                }
+            }else{
+                if($post->temppost->post_Status==constant::REJECTED){
 
+                    $this->blog->updateRejectedPosts($request,$post);
+                    return redirect(route('blog.showallblog'))->with('message','Your blog is again in approval State');
+                }
+                if($post->temppost->post_Status==constant::SCHEDULE_REJECTED){
+                    $this->blog->updateRejectedPosts($request,$post,true);
+                    return redirect(route('blog.showallblog'))->with('message','Your blog is again in approval State');
+                }
+            }
+        }
     }
+    //delete blog
+    public function delete($slug){
+        if($this->blog->delete($slug)){
+            return redirect(route('blog.showallblog'))->with('delete',"Post Deleted Successfully");
+        }else{
+            return view('error_pages.html.pagenotfound');
+        }
+    }
+    //delete image in edit blog page
+    public function deleteone($slug,$uuid){
+        $post = $this->blog->findPost($slug);
+        $mediaid = Media::where('uuid',$uuid)->first();
+       if($mediaid!=null){
+            if($post->temppost!=null){
+                $mediaid->forceDelete();
+            }else{
+                $mediaid->delete();
+            }
+            return true;
+       }else{
+            return false;
+       }
+    }
+    //view blog for superadmin
+    public function viewblog($slug){
+        $post = Post::where('slug',$slug)->first();
+        $temppost = Temppost::where('post_id',$post->id)->first();
+        $post = $post;
+        if($temppost!=null){
+            $post = $temppost;
+        }else{
+            if($post->post_Status==1){
+                $post = $post;
+            }else{
+                return view('error_pages.html.pagenotfound');
+            }
+        }
+        return view('notification.blog.view',['post'=>$post]);
+    }
+    //user blog and blogs
+    public function userblogs($userslug,$postslug=null){
+        $user = $this->classuser->findUser($userslug);
 
+        if($user==null){
+            return view('error_pages.html.pagenotfound');
+        }else{
+            if($postslug==null){
+
+                $posts = $this->blog->getUserPosts($user->id);
+                if($posts==null){
+                    return view('error_pages.html.pagenotfound');
+                }else{
+                    return view('blog.index',['posts'=>$posts,'userslug'=>$userslug]);
+                }
+            }else{
+                $post = $this->blog->getPublishPost($postslug);
+                if($post==null){
+                    return view('error_pages.html.pagenotfound');
+                }else{
+                    $this->blog->unDelete($post);
+                    $tags = $this->classtag->getAllTags();
+                    $topfivepost = $this->blog->userresentBlogs($userslug);
+                    return view('blog.detail',['post'=>$post,'userslug'=>$userslug,'newposts'=>$topfivepost,'tags'=>$tags]);
+                }
+
+            }
+        }
+    }
 }

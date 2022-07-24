@@ -29,6 +29,6 @@ class approvedmail extends Mailable
      */
     public function build()
     {
-        return $this->from(Auth::user()->email)->view('emailpages.approvedPost')->with('data',$this->data);
+        return $this->from(Auth::user()->email)->view('email_pages.html.approvedPost')->with('data',$this->data);
     }
 }

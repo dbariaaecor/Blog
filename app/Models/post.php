@@ -12,10 +12,10 @@ use Illuminate\Database\Eloquent\Model;
 use Spatie\MediaLibrary\InteractsWithMedia;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
-class post extends Model implements HasMedia
+class Post extends Model implements HasMedia
 {
     use InteractsWithMedia,HasFactory,HasSlug;
-
+    public $table = 'posts';
     /**
      * Get the options for generating the slug.
      */
@@ -30,7 +30,13 @@ class post extends Model implements HasMedia
         return $this->belongsTo(User::class);
     }
     public function tags(){
-        return $this->belongsToMany(tag::class,'post_tag');
+        return $this->belongsToMany(Tag::class,'post_tag');
     }
+
+    public function temppost(){
+        return $this->hasOne(Temppost::class);
+    }
+
+
 
 }

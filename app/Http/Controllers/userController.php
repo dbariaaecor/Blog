@@ -2,118 +2,137 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\post;
-use App\Models\User;
-use App\Mail\RejectMail;
-use App\Mail\approvedmail;
-use App\Mail\cancelBlogMail;
-use Illuminate\Http\Request;
-use App\Events\approvedPostEvent;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Mail;
-use App\Notifications\okayNotification;
-use App\Http\Requests\ProfileUpdateRequest;
-use App\Models\tempPost;
-use App\Notifications\cancelBlogNotiication;
-
-class userController extends Controller
-{
+                          #region namespaces
+    use App\Http\Classes\Blog;
+    use App\Models\Tag;
+    use App\Models\Post;
+    use App\Models\User;
+    use App\Http\Classes\User as Classuser;
+    use App\Http\interfaces\constant;
+    use App\Mail\RejectMail;
+    use App\Models\Temppost;
+    use App\Mail\approvedmail;
+    use Illuminate\Http\Request;
+    use Illuminate\Support\Facades\Auth;
+    use Illuminate\Support\Facades\Mail;
+    use App\Notifications\okayNotification;
+    use App\Notifications\cancelBlogNotiication;
+    use Spatie\MediaLibrary\MediaCollections\Models\Media;
+    use App\Http\Requests\author\personal\EditValidation as personal;
+    use App\Http\Requests\author\professional\EditValidation as professional;
+#endregion namespaces
+class UserController extends Controller implements constant{
+    public $classuser;
+    public $blog;
+    public function __construct(Classuser $classuser,Blog $blog){
+        $this->classuser = $classuser;
+        $this->blog = $blog;
+    }
+    //logged user profile page
     public function index(){
-
-        return view('authorprofile',['post'=>Auth::user()]);
+        return view('author_profile.profile',['user'=>Auth::user()]);
     }
-
+    //users profile
     public function userindex($slug){
-        $user = User::where('username',$slug)->first();
-
-        return view('authorprofile',['post'=>$user]);
+        $user = $this->classuser->finduser($slug);
+        return view('author_profile.profile',['user'=>$user]);
     }
+    //user personal detail edit page
     public function edit($slug){
-        $author = User::where(['username'=>$slug])->first();
-        return view('editprofile',['author'=>$author]);
+        $author = $this->classuser->finduser($slug);
+        return view('author_profile.editprofile',['author'=>$author]);
     }
-    public function update(ProfileUpdateRequest $request,$slug){
-
-        $user = User::where('username',$slug)->first();
-
-        $user->name = $request->name;
-        $user->phone = $request->phone;
-        $exp = array();
-        $tehnology = $request->tehnology;
-        $level = $request->level;
-        $expreience = $request->expreience;
-        $size = count($tehnology);
-        for($i=0;$i<$size;$i++){
-            array_push($exp,array('technology'=>$tehnology[$i],"level"=>$level[$i],"expreience"=>$expreience[$i]));
-        }
-        $exp = json_encode($exp);
-        $user->experiance = $exp;
-        $user->Auth_Description = $request->description;
-        $user->save();
-        return redirect(route('userindex',Auth::user()->username))->with('message',"Your Profile has been updated!");
+    //user personal detail update
+    public function update(personal $request,$slug){
+        $this->classuser->updatepersonal($request,$slug);
+        return redirect(route('user.userindex',Auth::user()->username))->with('message',"Your Profile has been updated!");
     }
-
+    //user professional detail edit page
+    public function professionalprofiledit($slug){
+        $author =$this->classuser->finduser($slug);
+        return view('author_profile.editProfessionalProfile',['author'=>$author]);
+    }
+    //user professional detail update
+    public function professionalprofileupdate(professional $request,$slug){
+        $this->classuser->updateProfessional($request,$slug);
+        return redirect(route('user.userindex',Auth::user()->username))->with('message',"Your Profile has been updated!");
+    }
+    //User blog post approve
     public function approve($slug,$id){
-
         if(User::find(Auth::user()->id)->hasRole('superadmin')){
-            $post = post::where('slug',$slug)->first();
-            if(post::where('slug',$slug)->first()->post_Status==4){
-                $this->deleteTempPost($slug);
-            }
-            if(post::where('slug',$slug)->first()->post_Status==1 && tempPost::where('slug',$slug)->first()!=null){
-                    $this->deleteTempPost($slug);
-            }
-            $title = $post->title;
-            $post->post_Status = 2;
-            $post->isApprove = 1;
-            $email = $post->user->email;
-            $user = $post->user;
-            $post->save();
+            $post = $this->blog->findPost($slug);
+            if($post==null){
+                return view('error_pages.html.pagenotfound');
+            }else{
 
-            $data = array('title'=>$title,'user'=>$user,'from'=>Auth::user()->email);
-            $user->notify(new okayNotification($title,$user->username));
-            Mail::to($email)->send(new approvedmail($data));
-            Auth::user()->notifications->where('id',$id)->markAsRead();
-            return redirect(route('approveindex'));
+                $temppost = $this->blog->findTempPost($post->id);
+                if($temppost==null){
+
+                    //Approve newly created post
+                        $post->post_Status = constant::PUBLISHED;
+                        $post->save();
+                }else{
+
+                    if($temppost->post_Status==constant::PENDING){
+
+                        $this->classuser->updatePost($post,$temppost);
+                    }
+                    if($temppost->post_Status==constant::APPROVAL_PENDING){
+                        $this->classuser->updatePost($post,$temppost,true);
+                    }
+                }
+
+                  //send notification to user
+                  $this->classuser->approvedNotification($post);
+                  //End
+                  Auth::user()->notifications->where('id',$id)->markAsRead();
+
+                  return redirect(route('notification.approveindex'));
+            }
         }
         abort(403);
     }
+    //Blog publish notification index
     public function approveindex(){
         if(User::find(Auth::user()->id)->hasRole('superadmin')){
-            return view('approve');
+            return view('notification.approve');
         }
         abort(403);
     }
-
+    //Blog cancel notifiction
     public function cancelApproval(Request $request,$slug,$id){
-        if(User::find(Auth::user()->id)->hasRole('superadmin')){
-
+        if(User::find(Auth::user()->id)->hasRole
+        ('superadmin')){
             $comment = $request->comment;
-            $post = post::where('slug',$slug)->first();
-            $temppost = tempPost::where('slug',$slug)->first();
-            $post_Status = 3;
-            $post->post_Status = $post_Status;
-            $post->save();
-            $userpost = post::where('slug',$slug)->first();
-            $from = Auth::user()->email;
-            $data = array('comment'=>$comment,'userpost'=>$userpost,'from'=>$from);
-            $userpost->user->notify(new cancelBlogNotiication($comment,$userpost,$from));
-            Mail::to($userpost->user->email)->send(new RejectMail($data));
-            Auth::user()->notifications->where('id',$id)->markAsRead();
-            return true;
+            $post = $this->blog->findPost($slug);
+            if($post==null){
+                return view('error_pages.html.pagenotfound');
+            }else{
+
+                $temppost = $this->blog->findTempPost($post->id);
+                $this->classuser->updateTemppost($post,$temppost,$comment);
+                Auth::user()->notifications->where('id',$id)->markAsRead();
+                return true;
+            }
         }
         abort(403);
     }
+    //Delete Temp post
     public function deleteTempPost($slug){
-        $temppost = tempPost::where('slug',$slug)->first();
-
+        $temppost = Temppost::where('slug',$slug)->first();
             foreach($temppost->getMedia('temp_cover_image') as $cover_image){
-                $cover_image->delete();
+                $cover_image->forceDelete();
             }
             foreach($temppost->getMedia('temp_post_images') as $postimg){
-                $postimg->delete();
+                $postimg->forceDelete();
             }
         $temppost->delete();
     }
+    //download users cv
+    public function download($id){
+        $mediaid =$this->classuser->getMedia($id);
+        $url = $mediaid->getPath();
+        $name =  $mediaid->file_name.time();
+        return response()->download($url,$name);
+    }
 }
-

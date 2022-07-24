@@ -12,17 +12,17 @@ class cancelBlogNotiication extends Notification
     use Queueable;
     public $comment;
     public $post;
-    public $from;
+    public $superadmin;
     /**
      * Create a new notification instance.
      *
      * @return void
      */
-    public function __construct($comment,$post,$from)
+    public function __construct($comment,$post,$superadmin)
     {
         $this->comment = $comment;
         $this->post = $post;
-        $this->from = $from;
+        $this->from = $superadmin;
     }
 
     /**
@@ -67,7 +67,7 @@ class cancelBlogNotiication extends Notification
         return [
             "comment"=>$this->comment,
             'post'=>$this->post,
-            'from'=>$this->from,
+            'from'=>$this->superadmin,
         ];
     }
 }

@@ -17,10 +17,12 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained();
             $table->string('title');
-            $table->string('cover_img');
-            $table->string('text_content');
-            $table->string('images');
+            $table->string('slug')->unique();
+            $table->text('preview_content');
+            $table->text('text_content');
             $table->integer('post_Status');
+            $table->date('actual_post_time')->nullable();
+            $table->string('reson')->nullable();
             $table->boolean('isApprove')->default(false);
             $table->timestamps();
         });

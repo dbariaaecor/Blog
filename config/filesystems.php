@@ -80,6 +80,11 @@ return [
             'root'   => public_path('app/public/storage/postimages') . '/',
             'url' => env('APP_URL').'/app/public/storage/postimages',
         ],
+        'file' => [
+            'driver' => 'local',
+            'root'   => public_path('app/public/storage/cv') . '/',
+            'url' => env('APP_URL').'/app/public/storage/cv',
+        ],
 
     ],
 

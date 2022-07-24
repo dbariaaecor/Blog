@@ -37,7 +37,7 @@ class approvedPostListener implements ShouldQueue
     {
         $fuser = User::where('email',$event->email)->first();
 
-        $event->user->notify(new okayNotification($fuser));
+        // $event->user->notify(new okayNotification($fuser));
     }
 }
 
